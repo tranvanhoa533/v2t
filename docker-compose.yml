@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  triton_server_service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: faceidcore/v2t:${IMAGE_TAG:-latest} # Here's the change!
+    container_name: faceidcore_v2t_${IMAGE_TAG:-latest} # Optional: make container name also reflect the tag
+    ports:
+      - "10000:8000"  # HTTP
+      - "10001:8001"  # gRPC
+      - "10002:8002"  # Metrics
+    volumes:
+      # This mounts your local model repository into the container.
+      # It's great for development, as you can change your model files
+      # without needing to rebuild the Docker image.
+      - ./v2t:/models
+    # command: tail -f /dev/null
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1  # Use 1 GPU, can be 'all'
+              capabilities: [gpu]

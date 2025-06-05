@@ -1,0 +1,92 @@
+name: "v2t_vi"
+backend: "python"
+max_batch_size: 0 # Allows Triton to dynamically batch requests
+
+input [
+  {
+    name: "AUDIO_BYTES"
+    data_type: TYPE_STRING  # Changed from TYPE_BYTES to TYPE_STRING
+    dims: [ 1 ]
+  },
+  {
+    name: "AUDIO_FORMAT"  # New input
+    data_type: TYPE_STRING
+    dims: [ 1 ]
+    optional: true
+  },
+  {
+    name: "TOTAL_BATCH_DURATION_SEC"
+    data_type: TYPE_INT32
+    dims: [ 1 ]
+    optional: true
+  },
+  {
+    name: "CHUNK_SIZE"
+    data_type: TYPE_INT32
+    dims: [ 1 ]
+    optional: true
+  },
+  {
+    name: "LEFT_CONTEXT_SIZE"
+    data_type: TYPE_INT32
+    dims: [ 1 ]
+    optional: true
+  },
+  {
+    name: "RIGHT_CONTEXT_SIZE"
+    data_type: TYPE_INT32
+    dims: [ 1 ]
+    optional: true
+  },
+  {
+    name: "AUTOCAST_DTYPE_STR" # Expected: "fp32", "bf16", "fp16", or "NONE"
+    data_type: TYPE_STRING
+    dims: [ 1 ]
+    optional: true
+  }
+]
+
+# ... rest of the config.pbtxt remains the same
+output [
+  {
+    name: "TRANSCRIPTIONS"
+    data_type: TYPE_STRING
+    dims: [ -1 ] # Indicates a variable number of strings (lines of transcription)
+  }
+]
+
+instance_group [
+  {
+    kind: KIND_GPU
+    count: 1 
+  }
+]
+
+parameters {
+  key: "DEVICE" 
+  value: { string_value: "cuda" }
+}
+parameters {
+  key: "DEFAULT_AUDIO_FORMAT"
+  value: { string_value: "wav" }
+}
+parameters {
+  key: "DEFAULT_TOTAL_BATCH_DURATION_SEC"
+  value: { string_value: "60" }
+}
+parameters {
+  key: "DEFAULT_CHUNK_SIZE"
+  value: { string_value: "64" }
+}
+parameters {
+  key: "DEFAULT_LEFT_CONTEXT_SIZE"
+  value: { string_value: "128" }
+}
+parameters {
+  key: "DEFAULT_RIGHT_CONTEXT_SIZE"
+  value: { string_value: "128" }
+}
+parameters {
+  key: "DEFAULT_AUTOCAST_DTYPE_STR" 
+  value: { string_value: "NONE" } 
+}

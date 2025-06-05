@@ -1,0 +1,12 @@
+Pillow
+pyyaml
+sentencepiece
+textgrid
+pandas
+jiwer
+huggingface_hub
+colorama
+pydub
+torch==2.6.0
+torchvision==0.21.0
+torchaudio==2.6.0
