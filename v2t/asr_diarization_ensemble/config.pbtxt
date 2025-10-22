@@ -1,0 +1,64 @@
+name: "asr_diarization_ensemble"
+platform: "ensemble"
+max_batch_size: 1
+
+input [
+  {
+    name: "AUDIO_BYTES"
+    data_type: TYPE_STRING
+    dims: [1]
+  }
+]
+
+output [
+  {
+    name: "FINAL_TRANSCRIPT"
+    data_type: TYPE_STRING
+    dims: [-1]
+  }
+]
+
+ensemble_scheduling {
+  step [
+    {
+      model_name: "asr"
+      model_version: -1
+      input_map {
+        key: "AUDIO_BYTES"
+        value: "AUDIO_BYTES"
+      }
+      output_map {
+        key: "TRANSCRIPTIONS"
+        value: "asr_output_tensor"
+      }
+    },
+    {
+      model_name: "diarizer"
+      model_version: -1
+      input_map {
+        key: "AUDIO_BYTES"
+        value: "AUDIO_BYTES"
+      }
+      output_map {
+        key: "DIARIZATION_RTTM"
+        value: "diarizer_output_tensor"
+      }
+    },
+    {
+      model_name: "stitcher"
+      model_version: -1
+      input_map {
+        key: "ASR_TRANSCRIPT"
+        value: "asr_output_tensor"
+      }
+      input_map {
+        key: "DIARIZATION_RTTM"
+        value: "diarizer_output_tensor"
+      }
+      output_map {
+        key: "FINAL_TRANSCRIPT"
+        value: "FINAL_TRANSCRIPT"
+      }
+    }
+  ]
+}

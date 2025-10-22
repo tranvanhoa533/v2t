@@ -1,4 +1,4 @@
-name: "v2t_vi"
+name: "asr"
 backend: "python"
 max_batch_size: 0 # Allows Triton to dynamically batch requests
 

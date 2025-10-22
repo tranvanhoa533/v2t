@@ -1,0 +1,24 @@
+name: "stitcher"
+backend: "python"
+max_batch_size: 1
+
+input [
+  {
+    name: "ASR_TRANSCRIPT"
+    data_type: TYPE_STRING
+    dims: [ -1 ]
+  },
+  {
+    name: "DIARIZATION_RTTM"
+    data_type: TYPE_STRING
+    dims: [ -1 ]
+  }
+]
+
+output [
+  {
+    name: "FINAL_TRANSCRIPT"
+    data_type: TYPE_STRING
+    dims: [ -1 ]
+  }
+]

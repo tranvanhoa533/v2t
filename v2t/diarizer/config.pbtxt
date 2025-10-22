@@ -1,0 +1,25 @@
+name: "diarizer"
+backend: "python"
+max_batch_size: 1
+
+input [
+  {
+    name: "AUDIO_BYTES"
+    data_type: TYPE_STRING
+    dims: [ 1 ]
+  }
+]
+
+output [
+  {
+    name: "DIARIZATION_RTTM"
+    data_type: TYPE_STRING
+    dims: [ -1 ] # Variable number of RTTM lines
+  }
+]
+
+instance_group [
+  {
+    kind: KIND_GPU
+  }
+]

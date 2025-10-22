@@ -5,12 +5,11 @@ FROM nvcr.io/nvidia/tritonserver:24.04-py3
 # Set the working directory inside the container
 WORKDIR /app
 
-# Copy the requirements file and install the Python packages first
-# This leverages Docker's layer caching, so dependencies are only re-installed if requirements.txt changes
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
 # Install FFmpeg
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends libsndfile1 ffmpeg && rm -rf /var/lib/apt/lists/*
+RUN pip install Cython packaging
+COPY requirements.txt .
+RUN pip install --no-cache-dir --ignore-installed blinker -r requirements.txt
 # Copy your entire model repository into the container's /models directory
 # This is where Triton will look for models to serve.
 COPY ./v2t /models
