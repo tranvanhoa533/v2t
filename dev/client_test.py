@@ -14,10 +14,10 @@ def create_audio_input(audio_bytes):
     """
     # FIX #1: The audio bytes must be wrapped in a 2D numpy array.
     # The shape becomes (1, 1) for a single audio file in the batch.
-    audio_bytes_np = np.array([[audio_bytes]], dtype=np.object_)
+    audio_bytes_np = np.array([audio_bytes], dtype=np.object_)
 
     # The shape [1, 1] tells Triton: batch_size=1, input_dims=1
-    input_audio = grpcclient.InferInput("AUDIO_BYTES", [1, 1], "BYTES")
+    input_audio = grpcclient.InferInput("AUDIO_BYTES", [1], "BYTES")
     input_audio.set_data_from_numpy(audio_bytes_np)
     return input_audio
 
@@ -69,8 +69,10 @@ def test_stitcher(client, args):
     
     # Mock RTTM data
     mock_rttm_data = np.array([
-        b"SPEAKER <NA> 1 0.40 2.20 <NA> <NA> speaker_0 <NA> <NA>",
-        b"SPEAKER <NA> 1 2.90 2.30 <NA> <NA> speaker_1 <NA> <NA>"
+        # b"SPEAKER <NA> 1 0.40 2.20 <NA> <NA> speaker_0 <NA> <NA>",
+        # b"SPEAKER <NA> 1 2.90 2.30 <NA> <NA> speaker_1 <NA> <NA>",
+        b"SPEAKER audio 1 0.320 0.160 <NA> <NA> speaker_0 <NA> <NA>",
+        b"SPEAKER audio 1 2.90 2.30 <NA> <NA> speaker_1 <NA> <NA>",
     ], dtype=np.object_)
 
     # Create inputs

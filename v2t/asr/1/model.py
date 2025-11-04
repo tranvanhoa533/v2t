@@ -54,13 +54,15 @@ class TritonPythonModel:
             "fp32": torch.float32,
             "bf16": torch.bfloat16,
             "fp16": torch.float16,
-            "NONE": None
+            "NONE": None            
         }
 
         self.logger = pb_utils.Logger
         self.logger.log_info(f"Model initialized on device: {self.device}")
         self.logger.log_info(f"Checkpoint directory: {self.checkpoint_dir}")
         self.logger.log_info(f"Default audio format: {self.default_audio_format}")
+        
+        
 
 
     def _load_model_internal(self, model_checkpoint_path, device):

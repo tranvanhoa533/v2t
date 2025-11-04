@@ -7,8 +7,82 @@ import torch
 import tempfile
 import soundfile as sf
 import io
+from pydub import AudioSegment
 
 class TritonPythonModel:
+
+    # def _load_audio_internal(self, audio_bytes_content):
+    #     """
+    #     Load audio from raw PCM bytes.
+    #     Assumes: 16kHz, mono, 16-bit signed integer PCM (standard for ASR/Diarization).
+    #     """
+    #     self.logger.log_info(f"Diarizer: Loading audio from raw PCM bytes")
+    #     self.logger.log_info(f"Diarizer: Received bytes type: {type(audio_bytes_content)}, length: {len(audio_bytes_content) if hasattr(audio_bytes_content, '__len__') else 'N/A'}")
+        
+    #     try:
+    #         # If audio_bytes_content is bytes, use directly
+    #         # If it's a numpy array of bytes, extract the bytes
+    #         if isinstance(audio_bytes_content, bytes):
+    #             raw_bytes = audio_bytes_content
+    #         elif isinstance(audio_bytes_content, np.ndarray):
+    #             # Handle case where it's a numpy array containing a bytes object
+    #             if audio_bytes_content.dtype == object:
+    #                 raw_bytes = audio_bytes_content.item() if audio_bytes_content.size == 1 else audio_bytes_content[0]
+    #             else:
+    #                 raw_bytes = audio_bytes_content.tobytes()
+    #         else:
+    #             raw_bytes = bytes(audio_bytes_content)
+            
+    #         self.logger.log_info(f"Diarizer: Raw bytes length after extraction: {len(raw_bytes)}")
+            
+    #         # Convert raw bytes directly to numpy array (16-bit signed integers)
+    #         audio_data_np = np.frombuffer(raw_bytes, dtype=np.int16)
+            
+    #         sample_rate = 16000  # Standard rate for ASR/Diarization
+            
+    #         duration_seconds = len(audio_data_np) / sample_rate
+    #         self.logger.log_info(f"Diarizer: Loaded {len(audio_data_np)} samples (~{duration_seconds:.2f}s at {sample_rate}Hz)")
+            
+    #         if len(audio_data_np) > 0:
+    #             self.logger.log_info(f"Diarizer: Sample stats: min={audio_data_np.min()}, max={audio_data_np.max()}, dtype={audio_data_np.dtype}")
+    #         else:
+    #             raise ValueError("Audio data is empty after conversion")
+            
+    #         return audio_data_np, sample_rate
+            
+    #     except Exception as e:
+    #         self.logger.log_error(f"Diarizer: Error loading raw PCM audio: {e}")
+    #         import traceback
+    #         self.logger.log_error(traceback.format_exc())
+    #         raise pb_utils.TritonModelException(f"Diarizer: Error loading audio: {e}")
+    
+    def _load_audio_internal(self, audio_bytes_content, audio_format="wav"): # audio_format is key
+        self.logger.log_info(f"Diarizer: Attempting to load audio from in-memory bytes using pydub. Specified format: {audio_format}")
+        try:
+            audio_file_like_object = io.BytesIO(audio_bytes_content)
+            
+            audio = AudioSegment.from_file(audio_file_like_object, format=audio_format) # Use the passed format
+            self.logger.log_info(f"Diarizer: Loaded from bytes. Duration: {audio.duration_seconds:.2f}s, Channels: {audio.channels}, Frame Rate: {audio.frame_rate}")
+
+            sample_rate = 16000
+            audio = audio.set_frame_rate(sample_rate)
+            audio = audio.set_sample_width(2)
+            audio = audio.set_channels(1)
+            self.logger.log_info(f"Diarizer: Resampled/Reformatted. Frame Rate: {audio.frame_rate}, Channels: {audio.channels}")
+            
+            samples_array = audio.get_array_of_samples()
+            samples = torch.as_tensor(samples_array, dtype=torch.float32).unsqueeze(0).to(self.device)
+            
+            self.logger.log_info(f"Diarizer: Output samples tensor shape: {samples.shape}, dtype: {samples.dtype}, device: {samples.device}")
+            if samples.numel() > 0:
+                 self.logger.log_info(f"Diarizer: Samples stats: min={samples.min()}, max={samples.max()}")
+            return samples_array, sample_rate
+        except Exception as e:
+            self.logger.log_error(f"Diarizer: Detailed error in _load_audio_internal (pydub from bytes, format: {audio_format}): {e}")
+            import traceback; self.logger.log_error(traceback.format_exc())
+            raise pb_utils.TritonModelException(f"Diarizer: Error loading audio from in-memory bytes with pydub (format: {audio_format}): {e}")
+        
+
     def initialize(self, args):
         """
         Initialize the model and load the local NeMo diarization model file.
@@ -46,78 +120,97 @@ class TritonPythonModel:
         """
         responses = []
         for request in requests:
+            tmp_filename = None
             try:
                 audio_bytes_tensor = pb_utils.get_input_tensor_by_name(request, "AUDIO_BYTES")
-                audio_bytes = audio_bytes_tensor.as_numpy()[0]
+                if audio_bytes_tensor is not None:
+                    audio_bytes_content = audio_bytes_tensor.as_numpy()[0] # This should be bytes
+                    self.logger.log_info(f"Successfully retrieved 'AUDIO_BYTES'. Type: {type(audio_bytes_content)}, Length: {len(audio_bytes_content) if isinstance(audio_bytes_content, bytes) else 'N/A (not bytes)'}")
+                else:
+                    self.logger.log_error(f"FAILED to retrieve 'AUDIO_BYTES' tensor (it's None or not found)!")
 
-                # Assume the incoming audio is 16-bit signed integer PCM, at 16000 Hz
-                sample_rate = 16000
-                dtype = np.int16
+                # Load raw PCM audio
+                audio_data_np, sample_rate = self._load_audio_internal(audio_bytes_content)
 
-                # Convert raw bytes to a NumPy array
-                audio_data = np.frombuffer(audio_bytes, dtype=dtype)
-                
+                # if audio_data_np.size == 0:
+                #     raise ValueError("Loaded audio data is empty")
+
+                # Write the processed NumPy array to a temporary WAV file
                 with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_audio_file:
-                    # Write the NumPy array to a temporary file. soundfile adds the WAV header.
-                    sf.write(tmp_audio_file.name, audio_data, sample_rate)
+                    sf.write(tmp_audio_file.name, audio_data_np, sample_rate, subtype='PCM_16')
                     tmp_filename = tmp_audio_file.name
-                    
-                try:
-                    self.logger.log_info(f"Processing audio file for diarization: {tmp_filename}")
-                    
-                    # Use the diarize() method with the correct parameter name
-                    predicted_segments = self.diarizer_model.diarize(
-                        audio=tmp_filename,
-                        batch_size=1
-                    )
-                    
-                    # Convert predicted segments to RTTM format
-                    rttm_lines = self._segments_to_rttm(predicted_segments)
-                    
-                finally:
-                    # Clean up temporary file
-                    if os.path.exists(tmp_filename):
-                        os.unlink(tmp_filename)
+                    self.logger.log_info(f"Diarizer: Wrote audio to temp file: {tmp_filename}")
+
+                # Perform diarization
+                self.logger.log_info(f"Diarizer: Starting NeMo diarization")
+                predicted_segments = self.diarizer_model.diarize(
+                    audio=tmp_filename,
+                    batch_size=1
+                )
+
+                # Convert predicted segments to RTTM format
+                self.logger.log_info(f"Diarizer: predicted_segments {predicted_segments}")
+                rttm_lines = self._segments_to_rttm(predicted_segments[0])
+                self.logger.log_info(f"Diarizer: Generated {len(rttm_lines)} RTTM lines")
 
                 output_tensor = pb_utils.Tensor(
                     "DIARIZATION_RTTM",
                     np.array(rttm_lines, dtype=object)
                 )
-                
+
                 inference_response = pb_utils.InferenceResponse(output_tensors=[output_tensor])
                 responses.append(inference_response)
 
             except Exception as e:
                 import traceback
-                self.logger.log_error(f"Error in diarizer: {str(e)}\n{traceback.format_exc()}")
+                self.logger.log_error(f"Error in diarizer execute: {str(e)}\n{traceback.format_exc()}")
                 error = pb_utils.TritonError(message=f"Error in diarizer: {str(e)}")
                 responses.append(pb_utils.InferenceResponse(output_tensors=[], error=error))
-        
+            finally:
+                # Clean up temporary file
+                if tmp_filename and os.path.exists(tmp_filename):
+                    try:
+                        os.unlink(tmp_filename)
+                        self.logger.log_info(f"Diarizer: Cleaned up temp file")
+                    except Exception as unlink_err:
+                        self.logger.log_error(f"Diarizer: Error cleaning up temp file: {unlink_err}")
+
         return responses
 
-    def _segments_to_rttm(self, predicted_segments):
+    def _segments_to_rttm(self, predicted_segments_list):
         """
-        Convert predicted segments to RTTM format.
-        
-        The diarize() method returns a list of tuples in format:
-        (start_time, end_time, speaker_id)
-        
-        Args:
-            predicted_segments: list of tuples (start, end, speaker_id)
-        
-        Returns:
-            list of RTTM formatted strings
+        Convert predicted segments (which are strings) to RTTM format.
         """
         rttm_lines = []
         
-        for segment in predicted_segments:
-            start_time, end_time, speaker_id = segment
-            duration = end_time - start_time
-            
-            # RTTM format: SPEAKER <file> <channel> <start> <duration> <NA> <NA> <speaker> <NA> <NA>
-            rttm_line = f"SPEAKER audio 1 {start_time:.3f} {duration:.3f} <NA> <NA> speaker_{int(speaker_id)} <NA> <NA>"
-            rttm_lines.append(rttm_line)
+        # predicted_segments_list is like: 
+        # ['1.200 11.360 speaker_0', '11.600 11.680 speaker_0', ...]
         
+        for segment_str in predicted_segments_list:
+            try:
+                # segment_str is '1.200 11.360 speaker_0'
+                parts = segment_str.split()
+                if len(parts) != 3:
+                    self.logger.log_warn(f"Diarizer: Skipping malformed segment string: {segment_str}")
+                    continue
+
+                start_time_str, end_time_str, speaker_label = parts
+                
+                # Convert to float
+                start_time = float(start_time_str)
+                end_time = float(end_time_str)
+                
+                duration = end_time - start_time
+                
+                # The speaker_label is already 'speaker_0', so use it directly.
+                # The old code's int(speaker_id) would have failed.
+                rttm_line = f"SPEAKER audio 1 {start_time:.3f} {duration:.3f} <NA> <NA> {speaker_label} <NA> <NA>"
+                rttm_lines.append(rttm_line)
+
+            except Exception as e:
+                self.logger.log_error(f"Diarizer: Error processing segment string '{segment_str}': {e}")
+                pass # Continue to the next segment
+
         return rttm_lines
 
     def finalize(self):
