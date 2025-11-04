@@ -49,7 +49,8 @@ class TritonPythonModel:
         self.default_left_context_size = int(self.model_config['parameters'].get('DEFAULT_LEFT_CONTEXT_SIZE', {}).get('string_value', '128'))
         self.default_right_context_size = int(self.model_config['parameters'].get('DEFAULT_RIGHT_CONTEXT_SIZE', {}).get('string_value', '128'))
         self.default_autocast_dtype_str = self.model_config['parameters'].get('DEFAULT_AUTOCAST_DTYPE_STR', {}).get('string_value', 'NONE')
-
+        self.default_max_silence_frames = int(self.model_config['parameters'].get('DEFAULT_MAX_SILENCE_FRAMES', {}).get('string_value', '6'))
+        
         self.autocast_map = {
             "fp32": torch.float32,
             "bf16": torch.bfloat16,
@@ -249,7 +250,7 @@ class TritonPythonModel:
             return []
 
         hyps_combined = torch.cat(hyps_list)
-        decode_results = get_output_with_timestamps([hyps_combined], char_dict)[0]
+        decode_results = get_output_with_timestamps([hyps_combined], char_dict, current_args.max_silence_frames)[0]
         self.logger.log_info(f"Results from get_output_with_timestamps (before formatting): {decode_results}")
 
         output_strings = []
@@ -277,6 +278,7 @@ class TritonPythonModel:
         for i, request_pb in enumerate(requests): # request_pb is of type TritonPythonModel.Request
             self.logger.log_info(f"Processing request_pb {i+1}/{len(requests)}")
             try:
+
                 # Log all available input tensor names from the protobuf request object
                 input_tensor_names = [input_tensor.name() for input_tensor in request_pb.inputs()]
                 self.logger.log_info(f"Request_pb {i+1}: Available input tensor names: {input_tensor_names}")
@@ -331,7 +333,9 @@ class TritonPythonModel:
                 autocast_dtype_str_val = autocast_dtype_str_tensor.as_numpy()[0].decode('utf-8').upper() if autocast_dtype_str_tensor else self.default_autocast_dtype_str.upper()
                 current_autocast_dtype = self.autocast_map.get(autocast_dtype_str_val, self.autocast_map["NONE"])
 
-
+                max_silence_tensor = pb_utils.get_input_tensor_by_name(request_pb, "MAX_SILENCE_FRAMES")
+                current_args.max_silence_frames = max_silence_tensor.as_numpy()[0] if max_silence_tensor else self.default_max_silence_frames
+                
                 self.logger.log_info(f"Request_pb {i+1}: Processing with effective audio_format: {current_args.audio_format}, chunk_size: {current_args.chunk_size}")
 
                 with torch.autocast(self.device.type, dtype=current_autocast_dtype, enabled=(current_autocast_dtype is not None)):

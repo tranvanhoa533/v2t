@@ -43,6 +43,12 @@ input [
     data_type: TYPE_STRING
     dims: [ 1 ]
     optional: true
+  },
+  {
+    name: "MAX_SILENCE_FRAMES"
+    data_type: TYPE_INT32
+    dims: [ 1 ]
+    optional: true
   }
 ]
 
@@ -89,4 +95,8 @@ parameters {
 parameters {
   key: "DEFAULT_AUTOCAST_DTYPE_STR" 
   value: { string_value: "NONE" } 
+}
+parameters {
+  key: "DEFAULT_MAX_SILENCE_FRAMES"
+  value: { string_value: "6" }
 }

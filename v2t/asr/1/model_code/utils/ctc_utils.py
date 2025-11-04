@@ -38,9 +38,8 @@ def get_output(hyps, char_dict):
     return decodes
 
 
-def get_output_with_timestamps(hyps, char_dict):
+def get_output_with_timestamps(hyps, char_dict, max_silence=6):
     decodes = []
-    max_silence = 20
     for tokens in hyps: # cost O(input_batch_size | ccu)
         tokens = tokens.cpu()
         start = -1
@@ -66,8 +65,10 @@ def get_output_with_timestamps(hyps, char_dict):
                 prev_end = end
                 item = {
                     "decode": class2str(remove_duplicates_and_blank(decode_per_time), char_dict),
-                    "start": milliseconds_to_hhmmssms(start * 8 * 10),
-                    "end": milliseconds_to_hhmmssms(end * 8 * 10)
+                    # "start": milliseconds_to_hhmmssms(start * 8 * 10),
+                    # "end": milliseconds_to_hhmmssms(end * 8 * 10),
+                    "start": (start * 8 * 10) / 1000.0,
+                    "end": (end * 8 * 10) / 1000.0 
                 }
                 decode.append(item)
                 decode_per_time = []
@@ -79,8 +80,10 @@ def get_output_with_timestamps(hyps, char_dict):
         if (start != -1) and (end == -1) and (len(decode_per_time) > 0):
             item = {
                 "decode": class2str(remove_duplicates_and_blank(decode_per_time), char_dict),
-                "start": milliseconds_to_hhmmssms(start * 8 * 10),
-                "end": milliseconds_to_hhmmssms(time_stamp * 8 * 10)
+                # "start": milliseconds_to_hhmmssms(start * 8 * 10),
+                # "end": milliseconds_to_hhmmssms(time_stamp * 8 * 10),
+                "start": (start * 8 * 10) / 1000.0,
+                "end": (time_stamp * 8 * 10) / 1000.0
             }
             decode.append(item)
         decodes.append(decode)
