@@ -16,7 +16,7 @@ def create_audio_input(audio_bytes):
     # The shape becomes (1, 1) for a single audio file in the batch.
     audio_bytes_np = np.array([audio_bytes], dtype=np.object_)
 
-    # The shape [1, 1] tells Triton: batch_size=1, input_dims=1
+    # The shape [1] tells Triton: batch_size=1
     input_audio = grpcclient.InferInput("AUDIO_BYTES", [1], "BYTES")
     input_audio.set_data_from_numpy(audio_bytes_np)
     return input_audio
@@ -30,9 +30,23 @@ def test_asr(client, args):
         audio_bytes = f.read()
 
     input_audio = create_audio_input(audio_bytes)
+    
+    # --- ĐÃ THÊM: Tạo input cho AUDIO_FORMAT ---
+    # Tự động lấy định dạng từ tên file
+    audio_format_str = os.path.splitext(args.audio_file)[1].lstrip('.').lower()
+    if not audio_format_str:
+        audio_format_str = "wav" # Mặc định là 'wav' nếu không có phần mở rộng
+    
+    print(f"Using audio_format: {audio_format_str}")
+    audio_format_np = np.array([audio_format_str.encode('utf-8')], dtype=np.object_)
+    input_format = grpcclient.InferInput("AUDIO_FORMAT", [1], "BYTES")
+    input_format.set_data_from_numpy(audio_format_np)
+    # --- KẾT THÚC THÊM ---
+
     outputs = [grpcclient.InferRequestedOutput("TRANSCRIPTIONS")]
 
-    results = client.infer(model_name=model_name, inputs=[input_audio], outputs=outputs)
+    # Thêm 'input_format' vào danh sách inputs
+    results = client.infer(model_name=model_name, inputs=[input_audio, input_format], outputs=outputs)
     transcriptions = results.as_numpy("TRANSCRIPTIONS")
     print("\n[ASR Model Output]")
     for line in transcriptions:
@@ -47,9 +61,22 @@ def test_diarizer(client, args):
         audio_bytes = f.read()
 
     input_audio = create_audio_input(audio_bytes)
+
+    # --- ĐÃ THÊM: Tạo input cho AUDIO_FORMAT ---
+    audio_format_str = os.path.splitext(args.audio_file)[1].lstrip('.').lower()
+    if not audio_format_str:
+        audio_format_str = "wav"
+    
+    print(f"Using audio_format: {audio_format_str}")
+    audio_format_np = np.array([audio_format_str.encode('utf-8')], dtype=np.object_)
+    input_format = grpcclient.InferInput("AUDIO_FORMAT", [1], "BYTES")
+    input_format.set_data_from_numpy(audio_format_np)
+    # --- KẾT THÚC THÊM ---
+
     outputs = [grpcclient.InferRequestedOutput("DIARIZATION_RTTM")]
 
-    results = client.infer(model_name=model_name, inputs=[input_audio], outputs=outputs)
+    # Thêm 'input_format' vào danh sách inputs
+    results = client.infer(model_name=model_name, inputs=[input_audio, input_format], outputs=outputs)
     rttm_lines = results.as_numpy("DIARIZATION_RTTM")
     print("\n[Diarizer Model Output (RTTM)]")
     for line in rttm_lines:
@@ -69,8 +96,6 @@ def test_stitcher(client, args):
     
     # Mock RTTM data
     mock_rttm_data = np.array([
-        # b"SPEAKER <NA> 1 0.40 2.20 <NA> <NA> speaker_0 <NA> <NA>",
-        # b"SPEAKER <NA> 1 2.90 2.30 <NA> <NA> speaker_1 <NA> <NA>",
         b"SPEAKER audio 1 0.320 0.160 <NA> <NA> speaker_0 <NA> <NA>",
         b"SPEAKER audio 1 2.90 2.30 <NA> <NA> speaker_1 <NA> <NA>",
     ], dtype=np.object_)
@@ -99,9 +124,22 @@ def test_ensemble(client, args):
         audio_bytes = f.read()
 
     input_audio = create_audio_input(audio_bytes)
+
+    # --- ĐÃ THÊM: Tạo input cho AUDIO_FORMAT ---
+    audio_format_str = os.path.splitext(args.audio_file)[1].lstrip('.').lower()
+    if not audio_format_str:
+        audio_format_str = "wav"
+    
+    print(f"Using audio_format: {audio_format_str}")
+    audio_format_np = np.array([audio_format_str.encode('utf-8')], dtype=np.object_)
+    input_format = grpcclient.InferInput("AUDIO_FORMAT", [1], "BYTES")
+    input_format.set_data_from_numpy(audio_format_np)
+    # --- KẾT THÚC THÊM ---
+
     outputs = [grpcclient.InferRequestedOutput("FINAL_TRANSCRIPT")]
 
-    results = client.infer(model_name=model_name, inputs=[input_audio], outputs=outputs)
+    # Thêm 'input_format' vào danh sách inputs
+    results = client.infer(model_name=model_name, inputs=[input_audio, input_format], outputs=outputs)
     final_transcript = results.as_numpy("FINAL_TRANSCRIPT")
     print("\n[Final Ensemble Output]")
     for line in final_transcript:
@@ -164,7 +202,6 @@ def main():
     try:
         args.func(triton_client, args)
     except grpcclient.InferenceServerException as e:
-        # FIX #2: Simply print the exception object. It contains the full error string.
         print(f"\nINFERENCE FAILED: {e}")
         sys.exit(1)
     except Exception as e:
@@ -173,4 +210,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

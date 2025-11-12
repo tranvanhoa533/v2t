@@ -9,7 +9,7 @@ input [
     dims: [ 1 ]
   },
   {
-    name: "AUDIO_FORMAT"  # New input
+    name: "AUDIO_FORMAT"
     data_type: TYPE_STRING
     dims: [ 1 ]
     optional: true
@@ -20,7 +20,7 @@ output [
   {
     name: "DIARIZATION_RTTM"
     data_type: TYPE_STRING
-    dims: [ -1 ] # Variable number of RTTM lines
+    dims: [ -1 ] 
   }
 ]
 
@@ -29,3 +29,9 @@ instance_group [
     kind: KIND_GPU
   }
 ]
+
+# Đã thêm tham số (giống như asr config)
+parameters {
+  key: "DEFAULT_AUDIO_FORMAT"
+  value: { string_value: "wav" }
+}

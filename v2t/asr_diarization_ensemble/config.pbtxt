@@ -7,6 +7,13 @@ input [
     name: "AUDIO_BYTES"
     data_type: TYPE_STRING
     dims: [1]
+  },
+  {
+    # Đã thêm input AUDIO_FORMAT vào ensemble
+    name: "AUDIO_FORMAT"
+    data_type: TYPE_STRING
+    dims: [ 1 ]
+    optional: true
   }
 ]
 
@@ -27,7 +34,13 @@ ensemble_scheduling {
         key: "AUDIO_BYTES"
         value: "AUDIO_BYTES"
       }
-      output_map {
+      input_map {
+        # Map AUDIO_FORMAT của ensemble vào AUDIO_FORMAT của asr
+        key: "AUDIO_FORMAT"
+        value: "AUDIO_FORMAT"
+      }
+    
+  output_map {
         key: "TRANSCRIPTIONS"
         value: "asr_output_tensor"
       }
@@ -39,9 +52,15 @@ ensemble_scheduling {
         key: "AUDIO_BYTES"
         value: "AUDIO_BYTES"
       }
+      input_map {
+        # Map AUDIO_FORMAT của ensemble vào AUDIO_FORMAT của diarizer
+        key: "AUDIO_FORMAT"
+        value: "AUDIO_FORMAT"
+      }
       output_map {
         key: "DIARIZATION_RTTM"
-        value: "diarizer_output_tensor"
+    
+    value: "diarizer_output_tensor"
       }
     },
     {
@@ -55,7 +74,8 @@ ensemble_scheduling {
         key: "DIARIZATION_RTTM"
         value: "diarizer_output_tensor"
       }
-      output_map {
+     
+ output_map {
         key: "FINAL_TRANSCRIPT"
         value: "FINAL_TRANSCRIPT"
       }
