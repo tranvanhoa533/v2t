@@ -55,16 +55,31 @@ class TritonPythonModel:
                 asr_segments = self._parse_asr_output(asr_lines)
                 speaker_turns = self._parse_rttm_output(rttm_lines)
                 
-                if not speaker_turns: # Handle case with no detected speech
-                    final_transcript = ["[No speech detected or diarization failed.]"]
+                final_transcript = []
+
+                if not speaker_turns: 
+                    # Trường hợp không có Diarization (hoặc file quá ngắn/yên lặng)
+                    # Có thể trả về ASR thô hoặc thông báo
+                    if asr_segments:
+                         final_transcript = [f"[{s['start']:.2f}] UNKNOWN: {s['text']}" for s in asr_segments]
+                    else:
+                         final_transcript = ["[No speech detected or diarization failed.]"]
                 else:
-                    # Stitching logic: Assign a speaker to each ASR segment
+                    # --- LOGIC FIX: Lọc Hallucination ---
+                    # Lấy thời điểm kết thúc của lượt nói cuối cùng từ Diarizer
+                    # Cộng thêm buffer (ví dụ 3 giây) để tránh cắt mất từ cuối nếu Diarizer ngắt hơi sớm
+                    last_speech_end_time = speaker_turns[-1]['end'] + 1.0
+
                     final_segments = []
                     for seg in asr_segments:
+                        # Nếu đoạn text bắt đầu sau khi Diarizer đã kết thúc hẳn -> Hallucination -> Bỏ qua
+                        if seg['start'] > last_speech_end_time:
+                            continue
+                        
+                        # Logic cũ: Gán speaker
                         seg_midpoint = seg['start'] + (seg['end'] - seg['start']) / 2
                         assigned_speaker = "UNKNOWN"
                         
-                        # Find which speaker turn the segment's midpoint falls into
                         for turn in speaker_turns:
                             if turn['start'] <= seg_midpoint < turn['end']:
                                 assigned_speaker = turn['speaker']
@@ -93,7 +108,10 @@ class TritonPythonModel:
                                 current_text = f"[{seg['start']:.2f}] {seg['speaker']}: {seg['text']}"
                         merged_transcript.append(current_text)
                     
-                    final_transcript = merged_transcript
+                    if merged_transcript:
+                        final_transcript = merged_transcript
+                    elif not final_transcript:
+                        final_transcript = ["[No valid speech segments match diarization timestamps.]"]
 
                 # Create output tensor
                 output_tensor = pb_utils.Tensor(
