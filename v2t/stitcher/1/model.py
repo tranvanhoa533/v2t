@@ -27,7 +27,6 @@ class TritonPythonModel:
         speaker_turns = []
         for line in rttm_lines:
             parts = line.split()
-            # RTTM format: SPEAKER <file> <chnl> <start> <duration> <NA> <NA> <speaker> <NA> <NA>
             if parts[0] == 'SPEAKER':
                 start = float(parts[3])
                 duration = float(parts[4])
@@ -36,7 +35,7 @@ class TritonPythonModel:
                     "end": start + duration,
                     "speaker": parts[7]
                 })
-        # Sort by start time just in case
+        # Sort by start time
         speaker_turns.sort(key=lambda x: x['start'])
         return speaker_turns
 
@@ -58,33 +57,38 @@ class TritonPythonModel:
                 final_transcript = []
 
                 if not speaker_turns: 
-                    # Trường hợp không có Diarization (hoặc file quá ngắn/yên lặng)
-                    # Có thể trả về ASR thô hoặc thông báo
                     if asr_segments:
                          final_transcript = [f"[{s['start']:.2f}] UNKNOWN: {s['text']}" for s in asr_segments]
                     else:
                          final_transcript = ["[No speech detected or diarization failed.]"]
                 else:
-                    # --- LOGIC FIX: Lọc Hallucination ---
-                    # Lấy thời điểm kết thúc của lượt nói cuối cùng từ Diarizer
-                    # Cộng thêm buffer (ví dụ 3 giây) để tránh cắt mất từ cuối nếu Diarizer ngắt hơi sớm
-                    last_speech_end_time = speaker_turns[-1]['end'] + 1.0
+                    # --- LOGIC FIX (UPDATED): Lọc Hallucination chặt chẽ hơn ---
+                    # Lấy mốc thời gian kết thúc tuyệt đối của Diarizer
+                    last_speech_end_time = speaker_turns[-1]['end']
 
                     final_segments = []
                     for seg in asr_segments:
-                        # Nếu đoạn text bắt đầu sau khi Diarizer đã kết thúc hẳn -> Hallucination -> Bỏ qua
-                        if seg['start'] > last_speech_end_time:
+                        seg_midpoint = seg['start'] + (seg['end'] - seg['start']) / 2
+                        
+                        # LOGIC MỚI: Kiểm tra Midpoint
+                        # Nếu điểm giữa của đoạn text nằm sau thời điểm kết thúc hội thoại (cộng dư 0.5s)
+                        # thì coi là ảo giác -> Bỏ qua ngay lập tức.
+                        if seg_midpoint > last_speech_end_time + 0.5:
                             continue
                         
-                        # Logic cũ: Gán speaker
-                        seg_midpoint = seg['start'] + (seg['end'] - seg['start']) / 2
                         assigned_speaker = "UNKNOWN"
                         
+                        # Tìm người nói dựa trên midpoint
                         for turn in speaker_turns:
                             if turn['start'] <= seg_midpoint < turn['end']:
                                 assigned_speaker = turn['speaker']
                                 break
                         
+                        # Nếu vẫn là UNKNOWN và đoạn này nằm ở cuối file (sau speaker cuối cùng)
+                        # thì khả năng cao vẫn là rác -> Bỏ qua
+                        if assigned_speaker == "UNKNOWN" and seg['start'] > speaker_turns[-1]['start']:
+                             continue
+
                         final_segments.append({
                             "start": seg['start'],
                             "end": seg['end'],
@@ -92,7 +96,7 @@ class TritonPythonModel:
                             "text": seg['text']
                         })
 
-                    # Combine consecutive segments from the same speaker
+                    # Combine consecutive segments
                     merged_transcript = []
                     if final_segments:
                         current_speaker = final_segments[0]['speaker']
@@ -110,8 +114,8 @@ class TritonPythonModel:
                     
                     if merged_transcript:
                         final_transcript = merged_transcript
-                    elif not final_transcript:
-                        final_transcript = ["[No valid speech segments match diarization timestamps.]"]
+                    elif not final_transcript and asr_segments:
+                        final_transcript = ["[No valid speech segments matched diarization timestamps.]"]
 
                 # Create output tensor
                 output_tensor = pb_utils.Tensor(
@@ -122,6 +126,8 @@ class TritonPythonModel:
                 responses.append(pb_utils.InferenceResponse(output_tensors=[output_tensor]))
 
             except Exception as e:
+                import traceback
+                self.logger.log_error(traceback.format_exc())
                 error = pb_utils.TritonError(message=f"Error in stitcher: {str(e)}")
                 responses.append(pb_utils.InferenceResponse(output_tensors=[], error=error))
         return responses
