@@ -5,7 +5,7 @@ services:
     # The 'build' section tells Docker Compose to build an image.
     build:
       context: .
-      dockerfile: Dockerfile.v2
+      dockerfile: Dockerfile
     
     # The 'image' name will be used to tag the newly built image.
     # It uses the IMAGE_TAG environment variable, defaulting to 'latest' if not set.

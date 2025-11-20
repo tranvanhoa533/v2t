@@ -15,7 +15,7 @@ import triton_python_backend_utils as pb_utils
 from model_code.utils.init_model import init_model
 from model_code.utils.checkpoint import load_checkpoint # Part of init_model implicitly
 from model_code.utils.file_utils import read_symbol_table # Part of init_model implicitly
-from model_code.utils.ctc_utils import get_output_with_timestamps, get_output
+from model_code.utils.ctc_utils import get_word_timestamps
 import torchaudio.compliance.kaldi as kaldi
 from pydub import AudioSegment
 
@@ -250,19 +250,13 @@ class TritonPythonModel:
             return []
 
         hyps_combined = torch.cat(hyps_list)
-        decode_results = get_output_with_timestamps([hyps_combined], char_dict, current_args.max_silence_frames)[0]
-        self.logger.log_info(f"Results from get_output_with_timestamps (before formatting): {decode_results}")
+        word_results = get_word_timestamps([hyps_combined], char_dict)[0]
+        self.logger.log_info(f"Results from get_word_timestamps: {word_results}")
 
-        output_strings = []
-        if decode_results:
-            for item in decode_results:
-                output_strings.append(f"[{item['start']}] - [{item['end']}]: {item['decode']}")
-        else:
-            self.logger.log_warn("decode_results from get_output_with_timestamps is empty.")
+        if not word_results:
+            return []
         
-        self.logger.log_info(f"Final formatted output_strings: {output_strings}")
-        
-        return output_strings
+        return [json.dumps(word_results)]
 
 
     # Inside model.py, class TritonPythonModel:
